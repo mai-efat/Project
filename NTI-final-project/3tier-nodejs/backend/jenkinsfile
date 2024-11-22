@@ -1,0 +1,68 @@
+
+    agent any
+    
+    environment {
+        // AWS region and ECR repository details
+        AWS_REGION = 'eu-north-1'  // Change to your AWS region
+        ECR_REPOSITORY = 'my-ecr-repository'  // Replace with your ECR repository name
+        ECR_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}"
+        IMAGE_TAG = "latest"  // You can customize this with dynamic versioning
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                // Checkout your source code (from GitHub, Bitbucket, etc.)
+                git branch: 'backend', url: 'https://github.com/mai-efat/ntiproject.git'
+            }
+        }
+        
+        stage('Login to ECR') {
+            steps {
+                script {
+                    // Log in to Amazon ECR using the AWS CLI
+                    withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'aws', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')])
+                    { 
+                        sh '''
+                        aws sts get-caller-identity --region ${AWS_REGION}  # Confirm AWS credentials
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URI}
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Build the Docker image
+                    sh '''
+                    docker build -t ${ECR_URI}:${IMAGE_TAG} .
+                    '''
+                }
+            }
+        }
+        
+        stage('Push to ECR') {
+            steps {
+                script {
+                    // Push the Docker image to the ECR repository
+                    sh '''
+                    docker push ${ECR_URI}:${IMAGE_TAG}
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo "Docker image pushed successfully to ECR!"
+        }
+        failure {
+            echo "Build or Push to ECR failed."
+        }
+    }
+}
+
+
